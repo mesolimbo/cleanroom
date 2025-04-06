@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <!-- Main printer body -->
+  <rect x="16" y="44" width="96" height="64" rx="6" fill="#2E8B57" />
+  
+  <!-- Paper tray top -->
+  <rect x="24" y="24" width="80" height="20" rx="3" fill="#2E8B57" />
+  
+  <!-- Paper/document -->
+  <rect x="32" y="4" width="64" height="32" rx="3" fill="#2E8B57" />
+  
+  <!-- Lines on paper -->
+  <rect x="40" y="12" width="48" height="6" rx="1" fill="#FFFFFF" />
+  <rect x="40" y="22" width="48" height="6" rx="1" fill="#FFFFFF" />
+  
+  <!-- Printer details -->
+  <rect x="88" y="64" width="16" height="16" rx="2" fill="#FFFFFF" />
+  <circle cx="96" cy="72" r="4" fill="#2E8B57" />
+</svg> 

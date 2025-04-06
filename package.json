@@ -1,0 +1,16 @@
+{
+  "name": "page-snapshot-extension",
+  "version": "1.0.0",
+  "description": "Chrome extension for capturing clean page snapshots",
+  "scripts": {
+    "generate-icons": "node generate-icons.js",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
+  },
+  "dependencies": {
+    "sharp": "^0.32.6"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0"
+  }
+}

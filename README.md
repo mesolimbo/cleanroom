@@ -1,5 +1,7 @@
 # Cleanroom Chrome Extension
 
+<img src="icons/icon128.png" width="128" height="128" alt="Cleanroom Icon">
+
 A Chrome extension that captures and sanitizes webpage content, ensuring a clean viewing experience by removing scripts and trackers.
 
 ## Features
@@ -8,6 +10,7 @@ A Chrome extension that captures and sanitizes webpage content, ensuring a clean
 - Sanitizes content by removing scripts and trackers
 - Preserves the original layout and styling
 - Provides a clean, distraction-free reading experience
+- Customizable content filtering using regular expressions
 - Works on most websites
 
 ## Installation
@@ -31,6 +34,38 @@ A Chrome extension that captures and sanitizes webpage content, ensuring a clean
 2. Click the Cleanroom icon in your Chrome toolbar
 3. The extension will capture and sanitize the page content
 4. View the clean version of the page in a new tab
+
+### Optional Content Filtering
+
+Cleanroom allows you to filter out specific elements from captured pages using regular expressions:
+
+1. Right-click the Cleanroom icon and select "Options"
+2. Enter your filter patterns, one per line
+3. Each pattern will be matched against element IDs and classes
+4. Elements matching any pattern will be removed from the sanitized page
+
+Example filters:
+```
+^ad-container
+sidebar
+newsletter-signup
+social-share
+popup
+```
+
+These filters would remove:
+- Elements with IDs/classes starting with "ad-container"
+- Any elements with "sidebar" in their ID/class
+- Newsletter signup forms
+- Social media sharing widgets
+- Popup elements
+
+Tips for effective filtering:
+- Patterns are case-sensitive
+- Use `^` to match the start of an ID/class
+- Use `$` to match the end of an ID/class
+- Keep patterns simple and specific
+- Test your patterns on a few pages to ensure they're not too aggressive
 
 ## How It Works
 

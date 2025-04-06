@@ -1,0 +1,29 @@
+{
+  "env": {
+    "browser": true,
+    "es2021": true,
+    "webextensions": true,
+    "node": true
+  },
+  "extends": "eslint:recommended",
+  "parserOptions": {
+    "ecmaVersion": "latest",
+    "sourceType": "module"
+  },
+  "rules": {
+    "indent": ["error", 2],
+    "linebreak-style": ["error", "unix"],
+    "quotes": ["error", "single"],
+    "semi": ["error", "always"],
+    "no-unused-vars": "warn",
+    "no-console": "off"
+  },
+  "overrides": [
+    {
+      "files": ["generate-icons.js"],
+      "env": {
+        "node": true
+      }
+    }
+  ]
+} 

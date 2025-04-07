@@ -155,17 +155,25 @@ To package the extension for distribution on the Chrome Web Store:
 
 ```
 cleanroom/
-├── icons/              # Extension icons
-│   ├── icon.svg        # Source SVG icon
-│   ├── icon16.png      # 16x16 icon
-│   ├── icon32.png      # 32x32 icon
-│   ├── icon48.png      # 48x48 icon
-│   └── icon128.png     # 128x128 icon
-├── background.js       # Background script
-├── content.js          # Content script
-├── manifest.json       # Extension manifest
-├── generate-icons.js   # Icon generation script
-└── README.md           # This file
+├── icons/                  # Extension icons
+│   ├── icon.svg           # Source SVG icon
+│   ├── icon16.png         # 16x16 icon
+│   ├── icon32.png         # 32x32 icon
+│   ├── icon48.png         # 48x48 icon
+│   └── icon128.png        # 128x128 icon
+├── background.js          # Background script (main extension logic)
+├── content.js             # Content script for page interaction
+├── content-display.js     # Script for displaying sanitized content
+├── template.html          # Template for displaying sanitized pages
+├── options.html          # Options page for filter settings
+├── options.js            # Options page logic
+├── manifest.json         # Extension manifest
+├── generate-icons.js     # Icon generation script
+├── package.json         # Node.js dependencies
+├── package-lock.json    # Locked Node.js dependencies
+├── .eslintrc.json      # ESLint configuration
+├── cleanroom.zip       # Packaged extension for Chrome Web Store
+└── README.md            # Documentation
 ```
 
 ## Contributing
@@ -178,5 +186,5 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Acknowledgments
 
-- Icon design inspired by medical and sanitization themes
+- Icon design by Cursor
 - Built with modern web technologies 

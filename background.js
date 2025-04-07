@@ -4,12 +4,50 @@ let tabCounter = 0;
 // Maximum number of pages to keep in storage
 const MAX_STORED_PAGES = 5;
 
+// Create context menu item
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.contextMenus.create({
+    id: 'openInCleanroom',
+    title: 'Open in Cleanroom',
+    contexts: ['link']
+  });
+});
+
+// Handle extension icon clicks
 chrome.action.onClicked.addListener((tab) => {
   // Inject the content script to capture and sanitize the page
   chrome.scripting.executeScript({
     target: { tabId: tab.id },
     function: captureAndSanitizePage
   });
+});
+
+// Handle context menu clicks
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId === 'openInCleanroom' && info.linkUrl) {
+    // Create a temporary tab to fetch the content
+    chrome.tabs.create({ url: info.linkUrl, active: false }, (tempTab) => {
+      // Wait for the tab to load
+      chrome.tabs.onUpdated.addListener(function listener(tabId, changeInfo) {
+        if (tabId === tempTab.id && changeInfo.status === 'complete') {
+          // Remove the listener
+          chrome.tabs.onUpdated.removeListener(listener);
+          
+          // Inject the content script to capture and sanitize the page
+          chrome.scripting.executeScript({
+            target: { tabId: tempTab.id },
+            function: captureAndSanitizePage
+          }, (results) => {
+            if (chrome.runtime.lastError) {
+              console.error('Script injection failed:', chrome.runtime.lastError);
+              chrome.tabs.remove(tempTab.id);
+              return;
+            }
+          });
+        }
+      });
+    });
+  }
 });
 
 // Listen for messages from the content script
@@ -35,7 +73,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const url = `${templateUrl}?pageId=${pageId}`;
       
       // Open the template in a new tab
-      chrome.tabs.create({ url: url });
+      chrome.tabs.create({ url: url }, (newTab) => {
+        // Close the temporary tab after the sanitized page is opened
+        if (sender.tab.id) {
+          chrome.tabs.remove(sender.tab.id);
+        }
+      });
     });
   }
 });

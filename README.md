@@ -7,6 +7,7 @@ A Chrome extension that captures and sanitizes webpage content, ensuring a clean
 ## Features
 
 - Captures webpage content with a single click
+- Right-click any link to open it directly in Cleanroom
 - Sanitizes content by removing scripts and trackers
 - Preserves the original layout and styling
 - Provides a clean, distraction-free reading experience
@@ -30,10 +31,19 @@ A Chrome extension that captures and sanitizes webpage content, ensuring a clean
 
 ## Usage
 
+There are two ways to use Cleanroom:
+
+### Method 1: Current Page
 1. Navigate to any webpage you want to capture
 2. Click the Cleanroom icon in your Chrome toolbar
 3. The extension will capture and sanitize the page content
 4. View the clean version of the page in a new tab
+
+### Method 2: Links (Context Menu)
+1. Right-click any link on a webpage
+2. Select "Open in Cleanroom" from the context menu
+3. The link will open in a new tab with all scripts and trackers removed
+4. Enjoy a clean, distraction-free version of the page
 
 ### Optional Content Filtering
 
@@ -71,7 +81,7 @@ Tips for effective filtering:
 
 Cleanroom uses a combination of techniques to sanitize webpage content:
 
-1. Captures the current page's HTML content
+1. Captures the page's HTML content (either current page or linked page)
 2. Removes scripts, iframes, and other potentially harmful elements
 3. Preserves the original layout and styling
 4. Creates a clean, readable version of the page
@@ -187,4 +197,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ## Acknowledgments
 
 - Icon design by Cursor
-- Built with modern web technologies 
+- Built with modern web technologies

@@ -126,10 +126,10 @@ To package the extension for distribution on the Chrome Web Store:
 1. Create a ZIP file of the extension:
    ```
    # On Windows
-   powershell Compress-Archive -Path manifest.json,background.js,content.js,icons -DestinationPath cleanroom.zip
+   powershell Compress-Archive -Path manifest.json,background.js,content.js,content-display.js,options.html,options.js,template.html,icons -DestinationPath cleanroom.zip -Force
    
    # On macOS/Linux
-   zip -r cleanroom.zip manifest.json background.js content.js icons/
+   zip -r cleanroom.zip manifest.json background.js content.js content-display.js options.html options.js template.html icons/
    ```
 
 2. Sign up for a Chrome Web Store Developer account:
@@ -165,25 +165,25 @@ To package the extension for distribution on the Chrome Web Store:
 
 ```
 cleanroom/
-├── icons/                  # Extension icons
-│   ├── icon.svg           # Source SVG icon
-│   ├── icon16.png         # 16x16 icon
-│   ├── icon32.png         # 32x32 icon
-│   ├── icon48.png         # 48x48 icon
-│   └── icon128.png        # 128x128 icon
-├── background.js          # Background script (main extension logic)
-├── content.js             # Content script for page interaction
-├── content-display.js     # Script for displaying sanitized content
-├── template.html          # Template for displaying sanitized pages
+├── icons/                # Extension icons
+│   ├── icon.svg          # Source SVG icon
+│   ├── icon16.png        # 16x16 icon
+│   ├── icon32.png        # 32x32 icon
+│   ├── icon48.png        # 48x48 icon
+│   └── icon128.png       # 128x128 icon
+├── background.js         # Background script (main extension logic)
+├── content.js            # Content script for page interaction
+├── content-display.js    # Script for displaying sanitized content
+├── template.html         # Template for displaying sanitized pages
 ├── options.html          # Options page for filter settings
 ├── options.js            # Options page logic
 ├── manifest.json         # Extension manifest
 ├── generate-icons.js     # Icon generation script
-├── package.json         # Node.js dependencies
-├── package-lock.json    # Locked Node.js dependencies
-├── .eslintrc.json      # ESLint configuration
-├── cleanroom.zip       # Packaged extension for Chrome Web Store
-└── README.md            # Documentation
+├── package.json          # Node.js dependencies
+├── package-lock.json     # Locked Node.js dependencies
+├── .eslintrc.json        # ESLint configuration
+├── cleanroom.zip         # Packaged extension for Chrome Web Store
+└── README.md             # Documentation
 ```
 
 ## Contributing

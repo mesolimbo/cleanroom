@@ -5,6 +5,9 @@ const path = require('path');
 const sizes = [16, 32, 48, 128];
 const svgBuffer = fs.readFileSync(path.join(__dirname, 'icons', 'icon.svg'));
 
+/*
+ * This script generates icons of different sizes from a single SVG file.
+ */
 async function generateIcons() {
   for (const size of sizes) {
     await sharp(svgBuffer)
@@ -15,4 +18,4 @@ async function generateIcons() {
   }
 }
 
-generateIcons().catch(console.error); 
+generateIcons().catch(console.error);

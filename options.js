@@ -10,26 +10,27 @@ function saveOptions() {
   
   chrome.storage.local.set({
     filterPatterns: patterns
-  }, function() {
+}, () => {
     // Show status message
     const status = document.getElementById('status');
     status.textContent = 'Options saved.';
     status.className = 'status success';
     status.style.display = 'block';
-    
+  
     // Hide the status message after 2 seconds
-    setTimeout(function() {
+    setTimeout(() => {
       status.style.display = 'none';
     }, 2000);
   });
 }
 
 // Restore options from chrome.storage
+/* global chrome */
 function restoreOptions() {
   chrome.storage.local.get({
     // Default value if no patterns are set
     filterPatterns: []
-  }, function(items) {
+  }, (items) => {
     // Join the patterns with newlines and set the textarea value
     document.getElementById('filterPatterns').value = items.filterPatterns.join('\n');
   });
@@ -37,4 +38,4 @@ function restoreOptions() {
 
 // Add event listeners when the DOM is fully loaded
 document.addEventListener('DOMContentLoaded', restoreOptions);
-document.getElementById('save').addEventListener('click', saveOptions); 
+document.getElementById('save').addEventListener('click', saveOptions);

@@ -23,7 +23,7 @@ chrome.action.onClicked.addListener((tab) => {
 });
 
 // Handle context menu clicks
-chrome.contextMenus.onClicked.addListener((info, tab) => {
+chrome.contextMenus.onClicked.addListener((info, _) => {
   if (info.menuItemId === 'openInCleanroom' && info.linkUrl) {
     // Create a temporary tab to fetch the content
     chrome.tabs.create({ url: info.linkUrl, active: false }, (tempTab) => {
@@ -37,11 +37,10 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
           chrome.scripting.executeScript({
             target: { tabId: tempTab.id },
             function: captureAndSanitizePage
-          }, (results) => {
+          }, (_) => {
             if (chrome.runtime.lastError) {
               console.error('Script injection failed:', chrome.runtime.lastError);
               chrome.tabs.remove(tempTab.id);
-              return;
             }
           });
         }
@@ -51,7 +50,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 });
 
 // Listen for messages from the content script
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message, sender, _) => {
   if (message.action === 'openSanitizedPage') {
     // Generate a unique ID for this sanitized page
     const pageId = 'cleanroom_page_' + Date.now() + '_' + tabCounter++;
@@ -73,7 +72,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const url = `${templateUrl}?pageId=${pageId}`;
       
       // Open the template in a new tab
-      chrome.tabs.create({ url: url }, (newTab) => {
+      chrome.tabs.create({ url: url }, (_) => {
         // Close the temporary tab after the sanitized page is opened
         if (sender.tab.id) {
           chrome.tabs.remove(sender.tab.id);

@@ -37,7 +37,7 @@ chrome.contextMenus.onClicked.addListener((info, _) => {
           chrome.scripting.executeScript({
             target: { tabId: tempTab.id },
             function: captureAndSanitizePage
-          }, (_) => {
+          }, (__) => {
             if (chrome.runtime.lastError) {
               console.error('Script injection failed:', chrome.runtime.lastError);
               chrome.tabs.remove(tempTab.id);

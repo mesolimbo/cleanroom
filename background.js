@@ -72,7 +72,7 @@ chrome.runtime.onMessage.addListener((message, sender, _) => {
       const url = `${templateUrl}?pageId=${pageId}`;
       
       // Open the template in a new tab
-      chrome.tabs.create({ url: url }, (_) => {
+      chrome.tabs.create({ url: url }, (____) => {
         // Close the temporary tab after the sanitized page is opened
         if (sender.tab.id) {
           chrome.tabs.remove(sender.tab.id);

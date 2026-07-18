@@ -20,7 +20,7 @@
   },
   "overrides": [
     {
-      "files": ["generate-icons.js"],
+      "files": ["scripts/generate-icons.js"],
       "env": {
         "node": true
       }

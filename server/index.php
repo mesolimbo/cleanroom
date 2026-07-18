@@ -1,0 +1,557 @@
+<?php
+
+declare(strict_types=1);
+
+// Large pages need headroom; shared hosts usually allow raising this per-script
+@ini_set('memory_limit', '256M');
+
+const CLEANROOM_MAX_HTML_BYTES = 20971520;
+const CLEANROOM_FETCH_TIMEOUT = 15;
+// A realistic browser UA: many sites refuse obvious bots outright
+const CLEANROOM_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36';
+const CLEANROOM_CSP = "default-src * data: blob: 'unsafe-inline'; script-src 'none'; frame-src 'none'; object-src 'none'";
+const CLEANROOM_REMOVED_TAGS = ['script', 'iframe', 'noscript', 'object', 'embed'];
+const CLEANROOM_TRACKING_ATTRIBUTES = ['data-track', 'data-analytics', 'data-ga'];
+
+// Palette lifted from the Cleanroom icon: steel blue frame, green broom,
+// ink screen, off-white chrome. Pages are pure CSS (our CSP forbids scripts).
+const CLEANROOM_STYLE = <<<'CSS'
+*, *::before, *::after { box-sizing: border-box; }
+:root {
+  color-scheme: light dark;
+  --blue: #3571a0;
+  --green: #2f8445;
+  --green-deep: #256b38;
+  --bg: light-dark(#f3f3f3, #191d21);
+  --card: light-dark(#ffffff, #23282e);
+  --text: light-dark(#231f20, #e8eaed);
+  --muted: light-dark(#5f6b76, #9aa4ae);
+  --border: light-dark(#d9dee4, #3a424a);
+  accent-color: var(--green);
+}
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  line-height: 1.6;
+  background: var(--bg);
+  color: var(--text);
+}
+main {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  max-width: var(--card-width, 26rem);
+  padding: 2.75rem 2.25rem 2.25rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  box-shadow: 0 16px 40px light-dark(rgb(35 31 32 / 0.10), rgb(0 0 0 / 0.45));
+}
+main::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 0.3rem;
+  background: linear-gradient(90deg, var(--blue), var(--green));
+}
+.logo { display: block; margin: 0 auto 1.25rem; }
+h1 {
+  margin: 0 0 0.25rem;
+  font-size: 1.75rem;
+  text-align: center;
+  letter-spacing: 0.02em;
+}
+.tagline {
+  margin: 0 0 1.75rem;
+  text-align: center;
+  color: var(--muted);
+}
+form { display: flex; flex-direction: column; gap: 0.75rem; }
+input[type=url] {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  font: inherit;
+  color: var(--text);
+  background: light-dark(#ffffff, #1b2026);
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+}
+input[type=url]:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+  border-color: var(--blue);
+}
+button {
+  padding: 0.75rem 1rem;
+  font: inherit;
+  font-weight: 600;
+  color: #ffffff;
+  background: var(--green);
+  border: none;
+  border-radius: 0.6rem;
+  cursor: pointer;
+}
+button:hover { background: var(--green-deep); }
+button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+a { color: var(--blue); }
+code {
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.3rem;
+  font-size: 0.9em;
+  background: light-dark(rgb(53 113 160 / 0.10), rgb(53 113 160 / 0.35));
+}
+a:has(> code) { text-decoration: none; }
+a:hover > code, a:focus-visible > code {
+  background: light-dark(rgb(53 113 160 / 0.22), rgb(53 113 160 / 0.55));
+}
+.hint {
+  margin: 1.5rem 0 0;
+  font-size: 0.85rem;
+  text-align: center;
+  color: var(--muted);
+}
+.hint + .hint { margin-top: 0.5rem; }
+.prose h1 { text-align: left; }
+.prose h2 { font-size: 1.1rem; margin: 1.5rem 0 0.5rem; color: var(--blue); }
+.prose ul { margin: 0; padding-left: 1.25rem; }
+.prose li + li { margin-top: 0.5rem; }
+CSS;
+
+// Shared page shell for landing, privacy, and error pages
+function cleanroom_page(string $title, string $content, string $cardWidth = '26rem'): string
+{
+    $style = CLEANROOM_STYLE;
+    $safeTitle = htmlspecialchars($title, ENT_QUOTES);
+    return <<<HTML
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>{$safeTitle}</title>
+  <link rel="icon" href="/favicon.ico">
+  <style>{$style}</style>
+</head>
+<body>
+  <main style="--card-width: {$cardWidth}">
+{$content}
+  </main>
+</body>
+</html>
+HTML;
+}
+
+function cleanroom_landing_page(): string
+{
+    return cleanroom_page('Cleanroom', <<<'HTML'
+    <img class="logo" src="/logo.svg" alt="" width="96" height="96">
+    <h1>Cleanroom</h1>
+    <p class="tagline">A clean, script-free reading view of any webpage.</p>
+    <form method="get" action="">
+      <input type="url" name="url" placeholder="https://example.com/article" required autofocus>
+      <button type="submit">Sanitize</button>
+    </form>
+    <p class="hint">Shortcut: append the address to this page's URL, e.g. <a href="/cnn.com"><code>/cnn.com</code></a>, or use <a href="/?url=cnn.com"><code>?url=cnn.com</code></a>.</p>
+    <p class="hint"><a href="/privacy">Privacy policy</a></p>
+HTML);
+}
+
+function cleanroom_privacy_page(): string
+{
+    return cleanroom_page('Cleanroom Privacy Policy', <<<'HTML'
+    <div class="prose">
+      <img class="logo" src="/logo.svg" alt="" width="64" height="64" style="margin: 0 0 1rem">
+      <h1>Cleanroom Privacy Policy</h1>
+      <p>Cleanroom (this website and the Cleanroom browser extension) fetches a webpage you explicitly request, removes scripts and trackers from it, and shows you the result.</p>
+      <h2>What is collected</h2>
+      <ul>
+        <li>The URL you ask Cleanroom to sanitize is sent to this server so it can fetch the page. The extension only does this when you click the Cleanroom icon or choose "Open in Cleanroom"; it never sends anything while you browse.</li>
+        <li>Standard web server logs (IP address, requested URL, timestamp) are kept briefly by the hosting provider for operational purposes.</li>
+      </ul>
+      <h2>What is not collected</h2>
+      <ul>
+        <li>No accounts, no cookies, no analytics, no advertising, and no tracking of any kind.</li>
+        <li>Your filter patterns and settings are stored locally in your browser, never on the server.</li>
+        <li>Nothing is sold or shared with third parties.</li>
+      </ul>
+      <p>Questions: [redacted]</p>
+      <p class="hint" style="text-align: left"><a href="/">&larr; Back to Cleanroom</a></p>
+    </div>
+HTML, '40rem');
+}
+
+// Accepts hand-crafted targets: no scheme defaults to https, and a scheme
+// whose double slash was collapsed by the web server is repaired
+function cleanroom_normalize_target(string $raw): string
+{
+    $raw = trim($raw);
+    if (str_starts_with($raw, '//')) {
+        return 'https:' . $raw;
+    }
+    if (preg_match('~^https?:/+~i', $raw)) {
+        return preg_replace('~^(https?):/+~i', '$1://', $raw);
+    }
+    if (!preg_match('~^[a-z][a-z0-9+.-]*://~i', $raw)) {
+        return 'https://' . $raw;
+    }
+    return $raw;
+}
+
+// Supports path-style requests like /cnn.com: everything after the leading
+// slash is the target; a filters param is peeled off, the rest of the query
+// string belongs to the target. Returns [target, filters] or null.
+function cleanroom_target_from_path(): ?array
+{
+    $uri = $_SERVER['REQUEST_URI'] ?? '/';
+    $parts = explode('?', $uri, 2);
+    $path = ltrim($parts[0], '/');
+    if ($path === '' || $path === 'index.php') {
+        return null;
+    }
+    $filters = null;
+    if (isset($parts[1]) && $parts[1] !== '') {
+        parse_str($parts[1], $params);
+        if (isset($params['filters']) && is_string($params['filters'])) {
+            $filters = $params['filters'];
+            unset($params['filters']);
+        }
+        if ($params !== []) {
+            $path .= '?' . http_build_query($params);
+        }
+    }
+    return [$path, $filters];
+}
+
+function cleanroom_is_private_ip(string $ip): bool
+{
+    return filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false;
+}
+
+function cleanroom_assert_public_target(string $url): void
+{
+    $parts = parse_url($url);
+    $scheme = strtolower($parts['scheme'] ?? '');
+    if ($scheme !== 'http' && $scheme !== 'https') {
+        throw new RuntimeException('Only http and https URLs are supported');
+    }
+    $host = strtolower($parts['host'] ?? '');
+    if ($host === '') {
+        throw new RuntimeException('URL has no host');
+    }
+    // Escape hatch for tests and local experiments (fetching from localhost)
+    if (getenv('CLEANROOM_ALLOW_PRIVATE') === '1') {
+        return;
+    }
+    if (preg_match('/^(localhost|.*\.local|.*\.internal)$/', $host)) {
+        throw new RuntimeException('Host is not allowed');
+    }
+    $bare = trim($host, '[]');
+    if (filter_var($bare, FILTER_VALIDATE_IP) !== false) {
+        if (cleanroom_is_private_ip($bare)) {
+            throw new RuntimeException('Host is not allowed');
+        }
+        return;
+    }
+    $address = gethostbyname($host);
+    if ($address === $host) {
+        throw new RuntimeException('Could not resolve host');
+    }
+    if (cleanroom_is_private_ip($address)) {
+        throw new RuntimeException('Host is not allowed');
+    }
+}
+
+function cleanroom_fetch(string $url): array
+{
+    $body = '';
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_MAXREDIRS => 5,
+        CURLOPT_CONNECTTIMEOUT => 10,
+        CURLOPT_TIMEOUT => CLEANROOM_FETCH_TIMEOUT,
+        CURLOPT_USERAGENT => CLEANROOM_USER_AGENT,
+        CURLOPT_ENCODING => '',
+        CURLOPT_HTTPHEADER => [
+            'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language: en-US,en;q=0.9',
+        ],
+        CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
+        CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
+        CURLOPT_WRITEFUNCTION => function ($ch, $chunk) use (&$body) {
+            $body .= $chunk;
+            if (strlen($body) > CLEANROOM_MAX_HTML_BYTES) {
+                return -1;
+            }
+            return strlen($chunk);
+        },
+    ]);
+    curl_exec($ch);
+    if (curl_errno($ch) !== 0) {
+        if (strlen($body) > CLEANROOM_MAX_HTML_BYTES) {
+            throw new RuntimeException('Page is too large to sanitize');
+        }
+        throw new RuntimeException('Could not fetch the page: ' . curl_error($ch));
+    }
+    return [
+        'status' => (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE),
+        'contentType' => (string) (curl_getinfo($ch, CURLINFO_CONTENT_TYPE) ?: ''),
+        'effectiveUrl' => (string) curl_getinfo($ch, CURLINFO_EFFECTIVE_URL),
+        'body' => $body,
+    ];
+}
+
+function cleanroom_parse_filters(?string $raw): array
+{
+    if ($raw === null || $raw === '') {
+        return [];
+    }
+    $parsed = json_decode($raw);
+    if (is_array($parsed)) {
+        return array_values(array_filter($parsed, fn ($p) => is_string($p) && $p !== ''));
+    }
+    // Not JSON: treat as comma-separated patterns (hand-edited URLs)
+    return array_values(array_filter(array_map('trim', explode(',', $raw)), fn ($p) => $p !== ''));
+}
+
+// Lazy-loading normally needs JS; promote the deferred attributes so
+// images render on a script-free page
+function cleanroom_promote_lazy_media(DOMElement $node): void
+{
+    $src = trim($node->getAttribute('src'));
+    if ($src === '' || $src === 'about:blank' || str_starts_with($src, 'data:')) {
+        foreach (['data-src', 'data-lazy-src', 'data-original'] as $attr) {
+            $value = trim($node->getAttribute($attr));
+            if ($value !== '') {
+                $node->setAttribute('src', $value);
+                break;
+            }
+        }
+    }
+    if (trim($node->getAttribute('srcset')) === '') {
+        foreach (['data-srcset', 'data-lazy-srcset'] as $attr) {
+            $value = trim($node->getAttribute($attr));
+            if ($value !== '') {
+                $node->setAttribute('srcset', $value);
+                break;
+            }
+        }
+    }
+}
+
+function cleanroom_matches_filter(DOMElement $node, array $regexes): bool
+{
+    $id = $node->getAttribute('id');
+    if ($id !== '') {
+        foreach ($regexes as $regex) {
+            if (preg_match($regex, $id)) {
+                return true;
+            }
+        }
+    }
+    $classes = preg_split('/\s+/', $node->getAttribute('class'), -1, PREG_SPLIT_NO_EMPTY);
+    foreach ($classes as $class) {
+        foreach ($regexes as $regex) {
+            if (preg_match($regex, $class)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+function cleanroom_sanitize(string $html, array $filterPatterns, string $baseUrl): string
+{
+    // News sites embed megabytes of JSON in inline scripts; dropping script
+    // blocks before parsing keeps DOMDocument's memory use reasonable.
+    // Anything this regex misses is removed again in the DOM pass below.
+    ini_set('pcre.backtrack_limit', '10000000');
+    $html = preg_replace('~<script\b[^>]*>.*?</script>~is', '', $html) ?? $html;
+
+    $doc = new DOMDocument();
+    libxml_use_internal_errors(true);
+    // The XML PI forces libxml to treat the input as UTF-8; it is removed below
+    $doc->loadHTML('<?xml encoding="UTF-8">' . $html);
+    libxml_clear_errors();
+    foreach (iterator_to_array($doc->childNodes) as $node) {
+        if ($node->nodeType === XML_PI_NODE) {
+            $doc->removeChild($node);
+        }
+    }
+    $doc->encoding = 'UTF-8';
+    if ($doc->documentElement === null) {
+        return "<!DOCTYPE html>\n<html><body></body></html>";
+    }
+
+    foreach (CLEANROOM_REMOVED_TAGS as $tag) {
+        foreach (iterator_to_array($doc->getElementsByTagName($tag)) as $node) {
+            $node->parentNode?->removeChild($node);
+        }
+    }
+
+    $regexes = [];
+    foreach ($filterPatterns as $pattern) {
+        $regex = '~' . str_replace('~', '\~', $pattern) . '~';
+        if (@preg_match($regex, '') === false) {
+            error_log('Invalid regex pattern: ' . $pattern);
+            continue;
+        }
+        $regexes[] = $regex;
+    }
+    if ($regexes !== []) {
+        foreach (iterator_to_array($doc->getElementsByTagName('div')) as $div) {
+            if (cleanroom_matches_filter($div, $regexes)) {
+                $div->parentNode?->removeChild($div);
+            }
+        }
+    }
+
+    foreach (iterator_to_array($doc->getElementsByTagName('*')) as $node) {
+        foreach (iterator_to_array($node->attributes) as $attr) {
+            $name = strtolower($attr->name);
+            if (str_starts_with($name, 'on') || in_array($name, CLEANROOM_TRACKING_ATTRIBUTES, true)) {
+                $node->removeAttribute($attr->name);
+            }
+        }
+        $href = $node->getAttribute('href');
+        if ($href !== '' && str_starts_with(strtolower(trim($href)), 'javascript:')) {
+            $node->removeAttribute('href');
+        }
+
+        if ($node->tagName === 'img' || $node->tagName === 'source') {
+            cleanroom_promote_lazy_media($node);
+        }
+    }
+
+    // The page is served from cleanroom's origin, so relative URLs need a base
+    $head = $doc->getElementsByTagName('head')->item(0);
+    if ($head !== null && $doc->getElementsByTagName('base')->length === 0) {
+        $base = $doc->createElement('base');
+        $base->setAttribute('href', $baseUrl);
+        $head->insertBefore($base, $head->firstChild);
+    }
+
+    // Without JS, skeleton placeholders would shimmer forever; freeze them
+    if ($head !== null) {
+        $style = $doc->createElement('style');
+        $style->appendChild($doc->createTextNode('*,*::before,*::after{animation:none!important;transition:none!important}'));
+        $head->appendChild($style);
+    }
+
+    return "<!DOCTYPE html>\n" . $doc->saveHTML($doc->documentElement);
+}
+
+function cleanroom_send_html(int $status, string $body): void
+{
+    http_response_code($status);
+    header('Content-Type: text/html; charset=utf-8');
+    header('Content-Security-Policy: ' . CLEANROOM_CSP);
+    header('X-Content-Type-Options: nosniff');
+    header('Referrer-Policy: no-referrer');
+    header('Cache-Control: private, max-age=300');
+    echo $body;
+}
+
+function cleanroom_send_error(int $status, string $message, string $extraHtml = ''): void
+{
+    $safe = htmlspecialchars($message, ENT_QUOTES);
+    $content = <<<HTML
+    <img class="logo" src="/logo.svg" alt="" width="64" height="64">
+    <h1>Cleanroom</h1>
+    <p class="tagline">{$safe}</p>
+{$extraHtml}
+    <p class="hint"><a href="/">&larr; Back to Cleanroom</a></p>
+HTML;
+    cleanroom_send_html($status, cleanroom_page('Cleanroom', $content));
+}
+
+function cleanroom_handle(): void
+{
+    $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+    if ($method !== 'GET' && $method !== 'HEAD') {
+        http_response_code(405);
+        header('Allow: GET, HEAD');
+        return;
+    }
+
+    $requestPath = explode('?', $_SERVER['REQUEST_URI'] ?? '/', 2)[0];
+    if ($requestPath === '/favicon.ico' || $requestPath === '/robots.txt') {
+        http_response_code(404);
+        return;
+    }
+    if ($requestPath === '/privacy') {
+        cleanroom_send_html(200, cleanroom_privacy_page());
+        return;
+    }
+
+    $rawUrl = trim($_GET['url'] ?? '');
+    $filtersRaw = $_GET['filters'] ?? null;
+    if ($rawUrl === '') {
+        $fromPath = cleanroom_target_from_path();
+        if ($fromPath !== null) {
+            [$rawUrl, $pathFilters] = $fromPath;
+            if ($pathFilters !== null) {
+                $filtersRaw = $pathFilters;
+            }
+        }
+    }
+    if ($rawUrl === '') {
+        cleanroom_send_html(200, cleanroom_landing_page());
+        return;
+    }
+    $rawUrl = cleanroom_normalize_target($rawUrl);
+
+    try {
+        cleanroom_assert_public_target($rawUrl);
+    } catch (RuntimeException $e) {
+        cleanroom_send_error(400, 'Invalid URL: ' . $e->getMessage());
+        return;
+    }
+
+    try {
+        $response = cleanroom_fetch($rawUrl);
+    } catch (RuntimeException $e) {
+        cleanroom_send_error(502, $e->getMessage());
+        return;
+    }
+
+    // Redirects may have moved us; re-check the final URL
+    try {
+        cleanroom_assert_public_target($response['effectiveUrl']);
+    } catch (RuntimeException $e) {
+        cleanroom_send_error(400, 'Invalid URL after redirect: ' . $e->getMessage());
+        return;
+    }
+
+    if ($response['status'] < 200 || $response['status'] >= 300) {
+        $message = 'The page returned status ' . $response['status'];
+        if (in_array($response['status'], [401, 403, 429], true)) {
+            $message .= '. This site appears to block automated access (bot protection or a paywall),'
+                . ' so Cleanroom cannot fetch it server-side.';
+        }
+        $safeUrl = htmlspecialchars($response['effectiveUrl'], ENT_QUOTES);
+        cleanroom_send_error(502, $message, '    <p class="hint"><a href="' . $safeUrl . '">Open the original page</a></p>');
+        return;
+    }
+
+    $contentType = strtolower($response['contentType']);
+    if (!str_contains($contentType, 'text/html') && !str_contains($contentType, 'application/xhtml+xml')) {
+        // Not a page (image, PDF, ...): just send the user to the original
+        http_response_code(302);
+        header('Location: ' . $response['effectiveUrl']);
+        return;
+    }
+
+    $filterPatterns = cleanroom_parse_filters($filtersRaw);
+    cleanroom_send_html(200, cleanroom_sanitize($response['body'], $filterPatterns, $response['effectiveUrl']));
+}
+
+if (PHP_SAPI !== 'cli') {
+    cleanroom_handle();
+}

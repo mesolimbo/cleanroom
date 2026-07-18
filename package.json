@@ -3,14 +3,16 @@
   "version": "1.0.0",
   "description": "Chrome extension for capturing clean page snapshots",
   "scripts": {
-    "generate-icons": "node generate-icons.js",
+    "generate-icons": "node scripts/generate-icons.js",
     "lint": "eslint .",
-    "lint:fix": "eslint . --fix"
+    "lint:fix": "eslint . --fix",
+    "test:e2e": "playwright test -c e2e/playwright.config.js"
   },
   "dependencies": {
-    "sharp": "^0.32.6"
+    "sharp": "^0.35.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.48.0",
     "eslint": "^8.57.0"
   }
 }

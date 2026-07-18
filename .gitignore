@@ -5,3 +5,7 @@ node_modules/
 .vscode/
 .idea/
 /.tmp
+dist/
+test-results/
+playwright-report/
+.playwright-mcp/

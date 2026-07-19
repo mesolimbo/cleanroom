@@ -12,6 +12,19 @@ const CLEANROOM_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWeb
 const CLEANROOM_CSP = "default-src * data: blob: 'unsafe-inline'; script-src 'none'; frame-src 'none'; object-src 'none'";
 const CLEANROOM_REMOVED_TAGS = ['script', 'iframe', 'noscript', 'object', 'embed'];
 const CLEANROOM_TRACKING_ATTRIBUTES = ['data-track', 'data-analytics', 'data-ga'];
+const CLEANROOM_MAX_STYLESHEETS = 10;
+const CLEANROOM_MAX_CSS_BYTES = 2097152;
+const CLEANROOM_CSS_FETCH_TIMEOUT = 5;
+// Page titles used by bot-protection vendors; these challenges arrive with
+// HTTP 200 and render blank once their scripts are stripped
+const CLEANROOM_CHALLENGE_TITLES = [
+    'Client Challenge',                    // F5 Distributed Cloud
+    'Just a moment',                       // Cloudflare
+    'Attention Required!',                 // Cloudflare block page
+    'Access to this page has been denied', // HUMAN / PerimeterX
+    'Pardon Our Interruption',             // Imperva / Distil
+    'Verifying you are human',
+];
 
 // Palette lifted from the Cleanroom icon: steel blue frame, green broom,
 // ink screen, off-white chrome. Pages are pure CSS (our CSP forbids scripts).
@@ -27,6 +40,7 @@ const CLEANROOM_STYLE = <<<'CSS'
   --text: light-dark(#231f20, #e8eaed);
   --muted: light-dark(#5f6b76, #9aa4ae);
   --border: light-dark(#d9dee4, #3a424a);
+  --link: light-dark(#3571a0, #8ab9dc);
   accent-color: var(--green);
 }
 body {
@@ -98,7 +112,7 @@ button {
 }
 button:hover { background: var(--green-deep); }
 button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
-a { color: var(--blue); }
+a { color: var(--link); }
 code {
   padding: 0.1rem 0.35rem;
   border-radius: 0.3rem;
@@ -117,7 +131,7 @@ a:hover > code, a:focus-visible > code {
 }
 .hint + .hint { margin-top: 0.5rem; }
 .prose h1 { text-align: left; }
-.prose h2 { font-size: 1.1rem; margin: 1.5rem 0 0.5rem; color: var(--blue); }
+.prose h2 { font-size: 1.1rem; margin: 1.5rem 0 0.5rem; color: var(--link); }
 .prose ul { margin: 0; padding-left: 1.25rem; }
 .prose li + li { margin-top: 0.5rem; }
 CSS;
@@ -267,7 +281,7 @@ function cleanroom_assert_public_target(string $url): void
     }
 }
 
-function cleanroom_fetch(string $url): array
+function cleanroom_fetch(string $url, int $timeout = CLEANROOM_FETCH_TIMEOUT): array
 {
     $body = '';
     $ch = curl_init($url);
@@ -275,7 +289,7 @@ function cleanroom_fetch(string $url): array
         CURLOPT_FOLLOWLOCATION => true,
         CURLOPT_MAXREDIRS => 5,
         CURLOPT_CONNECTTIMEOUT => 10,
-        CURLOPT_TIMEOUT => CLEANROOM_FETCH_TIMEOUT,
+        CURLOPT_TIMEOUT => $timeout,
         CURLOPT_USERAGENT => CLEANROOM_USER_AGENT,
         CURLOPT_ENCODING => '',
         CURLOPT_HTTPHEADER => [
@@ -305,6 +319,142 @@ function cleanroom_fetch(string $url): array
         'effectiveUrl' => (string) curl_getinfo($ch, CURLINFO_EFFECTIVE_URL),
         'body' => $body,
     ];
+}
+
+function cleanroom_looks_like_challenge(string $html): bool
+{
+    if (!preg_match('~<title[^>]*>([^<]*)</title>~i', substr($html, 0, 8192), $match)) {
+        return false;
+    }
+    $title = html_entity_decode(trim($match[1]), ENT_QUOTES | ENT_HTML5);
+    foreach (CLEANROOM_CHALLENGE_TITLES as $marker) {
+        if (stripos($title, $marker) !== false) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Resolves a reference against a base URL. Returns null for refs that should
+// be left alone (data:, fragments, non-http schemes).
+function cleanroom_resolve_url(string $ref, string $base): ?string
+{
+    $ref = trim($ref);
+    if ($ref === '' || str_starts_with($ref, '#')) {
+        return null;
+    }
+    if (preg_match('~^[a-z][a-z0-9+.-]*:~i', $ref)) {
+        return preg_match('~^https?://~i', $ref) ? $ref : null;
+    }
+    $parts = parse_url($base);
+    if (!isset($parts['scheme'], $parts['host'])) {
+        return null;
+    }
+    if (str_starts_with($ref, '//')) {
+        return $parts['scheme'] . ':' . $ref;
+    }
+    $origin = $parts['scheme'] . '://' . $parts['host'] . (isset($parts['port']) ? ':' . $parts['port'] : '');
+    $suffix = '';
+    if (preg_match('~^([^?#]*)([?#].*)$~', $ref, $match)) {
+        [, $ref, $suffix] = $match;
+    }
+    $dir = str_starts_with($ref, '/') ? '' : preg_replace('~[^/]*$~', '', $parts['path'] ?? '/');
+    $segments = [];
+    foreach (explode('/', $dir . $ref) as $segment) {
+        if ($segment === '' || $segment === '.') {
+            continue;
+        }
+        if ($segment === '..') {
+            array_pop($segments);
+            continue;
+        }
+        $segments[] = $segment;
+    }
+    return $origin . '/' . implode('/', $segments) . $suffix;
+}
+
+// Inlined CSS loses its own URL, so stylesheet-relative references (fonts,
+// images, @imports) must become absolute before embedding
+function cleanroom_absolutize_css(string $css, string $cssUrl): string
+{
+    $css = preg_replace_callback(
+        '~url\(\s*(["\']?)([^"\')\s]+)\1\s*\)~i',
+        function ($m) use ($cssUrl) {
+            $resolved = cleanroom_resolve_url($m[2], $cssUrl);
+            return $resolved === null ? $m[0] : 'url("' . $resolved . '")';
+        },
+        $css
+    ) ?? $css;
+    return preg_replace_callback(
+        '~@import\s+(["\'])([^"\']+)\1~i',
+        function ($m) use ($cssUrl) {
+            $resolved = cleanroom_resolve_url($m[2], $cssUrl);
+            return $resolved === null ? $m[0] : '@import "' . $resolved . '"';
+        },
+        $css
+    ) ?? $css;
+}
+
+function cleanroom_fetch_stylesheet(string $url): ?string
+{
+    try {
+        cleanroom_assert_public_target($url);
+        $response = cleanroom_fetch($url, CLEANROOM_CSS_FETCH_TIMEOUT);
+    } catch (RuntimeException $e) {
+        return null;
+    }
+    if ($response['status'] < 200 || $response['status'] >= 300) {
+        return null;
+    }
+    if (strlen($response['body']) > CLEANROOM_MAX_CSS_BYTES) {
+        return null;
+    }
+    // An HTML response here is an error or challenge page, not a stylesheet
+    if (str_contains(strtolower($response['contentType']), 'html')) {
+        return null;
+    }
+    return $response['body'];
+}
+
+// Browsers fetch <link> stylesheets from the original host, where hotlink
+// and CORS rules can reject them; fetching server-side and embedding the
+// CSS keeps styling intact. Fetch failures leave the <link> as a fallback.
+function cleanroom_inline_stylesheets(DOMDocument $doc, string $baseUrl, callable $fetchCss): void
+{
+    $baseNode = $doc->getElementsByTagName('base')->item(0);
+    if ($baseNode !== null) {
+        $declared = trim($baseNode->getAttribute('href'));
+        if ($declared !== '') {
+            $baseUrl = cleanroom_resolve_url($declared, $baseUrl) ?? $baseUrl;
+        }
+    }
+    $inlined = 0;
+    foreach (iterator_to_array($doc->getElementsByTagName('link')) as $link) {
+        if ($inlined >= CLEANROOM_MAX_STYLESHEETS) {
+            break;
+        }
+        $rel = strtolower(trim($link->getAttribute('rel')));
+        $href = trim($link->getAttribute('href'));
+        if ($rel !== 'stylesheet' || $href === '') {
+            continue;
+        }
+        $url = cleanroom_resolve_url($href, $baseUrl);
+        if ($url === null) {
+            continue;
+        }
+        $css = $fetchCss($url);
+        if ($css === null) {
+            continue;
+        }
+        $style = $doc->createElement('style');
+        $media = trim($link->getAttribute('media'));
+        if ($media !== '') {
+            $style->setAttribute('media', $media);
+        }
+        $style->appendChild($doc->createTextNode(cleanroom_absolutize_css($css, $url)));
+        $link->parentNode?->replaceChild($style, $link);
+        $inlined++;
+    }
 }
 
 function cleanroom_parse_filters(?string $raw): array
@@ -366,7 +516,7 @@ function cleanroom_matches_filter(DOMElement $node, array $regexes): bool
     return false;
 }
 
-function cleanroom_sanitize(string $html, array $filterPatterns, string $baseUrl): string
+function cleanroom_sanitize(string $html, array $filterPatterns, string $baseUrl, ?callable $fetchCss = null): string
 {
     // News sites embed megabytes of JSON in inline scripts; dropping script
     // blocks before parsing keeps DOMDocument's memory use reasonable.
@@ -427,6 +577,10 @@ function cleanroom_sanitize(string $html, array $filterPatterns, string $baseUrl
         if ($node->tagName === 'img' || $node->tagName === 'source') {
             cleanroom_promote_lazy_media($node);
         }
+    }
+
+    if ($fetchCss !== null) {
+        cleanroom_inline_stylesheets($doc, $baseUrl, $fetchCss);
     }
 
     // The page is served from cleanroom's origin, so relative URLs need a base
@@ -548,8 +702,20 @@ function cleanroom_handle(): void
         return;
     }
 
+    // Bot walls often serve their challenge with HTTP 200; stripped of its
+    // scripts it would render as a blank page, so report it as a block instead
+    if (cleanroom_looks_like_challenge($response['body'])) {
+        $safeUrl = htmlspecialchars($response['effectiveUrl'], ENT_QUOTES);
+        cleanroom_send_error(
+            502,
+            'This site appears to block automated access (bot protection or a paywall), so Cleanroom cannot fetch it server-side.',
+            '    <p class="hint"><a href="' . $safeUrl . '">Open the original page</a></p>'
+        );
+        return;
+    }
+
     $filterPatterns = cleanroom_parse_filters($filtersRaw);
-    cleanroom_send_html(200, cleanroom_sanitize($response['body'], $filterPatterns, $response['effectiveUrl']));
+    cleanroom_send_html(200, cleanroom_sanitize($response['body'], $filterPatterns, $response['effectiveUrl'], 'cleanroom_fetch_stylesheet'));
 }
 
 if (PHP_SAPI !== 'cli') {

@@ -76,6 +76,40 @@ check(str_contains($out, 'srcset="https://cdn.example/pic.webp"'), 'source eleme
 check(str_contains($out, 'src="https://cdn.example/pic.jpg"'), 'srcless image gets data-src');
 check(str_contains($out, 'animation:none!important'), 'animation-freezing style injected');
 
+check(cleanroom_resolve_url('/a/b.css', 'https://ex.com/page/x.html') === 'https://ex.com/a/b.css', 'root-relative URL resolved');
+check(cleanroom_resolve_url('b.css?v=2', 'https://ex.com/page/x.html') === 'https://ex.com/page/b.css?v=2', 'relative URL keeps query');
+check(cleanroom_resolve_url('../up.css', 'https://ex.com/a/b/x.html') === 'https://ex.com/a/up.css', 'dot segments collapsed');
+check(cleanroom_resolve_url('//cdn.ex.com/c.css', 'https://ex.com/x') === 'https://cdn.ex.com/c.css', 'protocol-relative URL resolved');
+check(cleanroom_resolve_url('https://cdn.ex.com/c.css', 'https://ex.com/x') === 'https://cdn.ex.com/c.css', 'absolute URL untouched');
+check(cleanroom_resolve_url('data:text/css,x', 'https://ex.com/x') === null, 'data URL left alone');
+check(cleanroom_resolve_url('style.css', 'https://ex.com:8080/d/x') === 'https://ex.com:8080/d/style.css', 'port preserved');
+
+$css = 'body{background:url(../img/bg.png)} @font-face{src:url("fonts/a.woff2")} @import "extra.css"; .x{background:url(data:image/gif;base64,AA)}';
+$abs = cleanroom_absolutize_css($css, 'https://ex.com/assets/css/main.css');
+check(str_contains($abs, 'url("https://ex.com/assets/img/bg.png")'), 'css url() absolutized');
+check(str_contains($abs, 'url("https://ex.com/assets/css/fonts/a.woff2")'), 'quoted css url() absolutized');
+check(str_contains($abs, '@import "https://ex.com/assets/css/extra.css"'), 'css @import absolutized');
+check(str_contains($abs, 'url(data:image/gif;base64,AA)'), 'data url() untouched');
+
+$linked = '<html><head>'
+  . '<link rel="stylesheet" href="/css/ok.css">'
+  . '<link rel="stylesheet" href="/css/missing.css" media="print">'
+  . '<link rel="preload" as="style" href="/css/pre.css">'
+  . '</head><body>x</body></html>';
+$fakeFetch = fn (string $url) => str_contains($url, 'ok.css') ? 'h1>span{background:url(i.png)}' : null;
+$out = cleanroom_sanitize($linked, [], 'https://ex.com/page', $fakeFetch);
+check(str_contains($out, '<style>h1>span{background:url("https://ex.com/css/i.png")}</style>'), 'stylesheet inlined with absolutized urls');
+check(!str_contains($out, 'href="/css/ok.css"'), 'inlined link element removed');
+check(str_contains($out, 'href="/css/missing.css"'), 'failed fetch leaves link as fallback');
+check(str_contains($out, 'href="/css/pre.css"'), 'preload link untouched');
+
+$out = cleanroom_sanitize($linked, [], 'https://ex.com/page');
+check(str_contains($out, 'href="/css/ok.css"'), 'no fetcher means no inlining');
+
+check(cleanroom_looks_like_challenge('<html><head><title>Client Challenge</title></head></html>'), 'F5 challenge page detected');
+check(cleanroom_looks_like_challenge('<html><head><title>Just a moment...</title></head></html>'), 'Cloudflare challenge page detected');
+check(!cleanroom_looks_like_challenge('<html><head><title>Real Article</title></head><body>Just a moment ago</body></html>'), 'ordinary page not flagged as challenge');
+
 check(cleanroom_normalize_target('cnn.com') === 'https://cnn.com', 'schemeless target defaults to https');
 check(cleanroom_normalize_target('cnn.com/politics?a=b') === 'https://cnn.com/politics?a=b', 'schemeless target keeps path and query');
 check(cleanroom_normalize_target('http://cnn.com/') === 'http://cnn.com/', 'explicit http kept');

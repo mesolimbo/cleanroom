@@ -104,6 +104,17 @@ $res = http_get("{$appUrl}/?url=" . urlencode("{$originUrl}/page") . '&filters=s
 check(!str_contains($res['body'], 'SIDEBAR'), 'filters applied from query string');
 check(str_contains($res['body'], 'CONTENT'), 'filtered page keeps other content');
 
+$res = http_get("{$appUrl}/?url=" . urlencode("{$originUrl}/styled"));
+check($res['status'] === 200, 'styled page returns 200');
+check(str_contains($res['body'], "url(\"{$originUrl}/img/bg.png\")"), 'stylesheet inlined with absolute urls');
+check(!str_contains($res['body'], 'href="/style.css"'), 'inlined stylesheet link removed');
+check(str_contains($res['body'], 'href="/gone.css"'), 'unfetchable stylesheet link kept as fallback');
+
+$res = http_get("{$appUrl}/?url=" . urlencode("{$originUrl}/challenge"));
+check($res['status'] === 502, 'bot challenge page reported as an error');
+check(str_contains($res['body'], 'block automated access'), 'bot challenge error explains the block');
+check(str_contains($res['body'], "href=\"{$originUrl}/challenge\""), 'bot challenge error links to the original');
+
 $res = http_get("{$appUrl}/?url=" . urlencode("{$originUrl}/image"));
 check($res['status'] === 302, 'non-HTML content redirects');
 check(($res['headers']['location'] ?? '') === "{$originUrl}/image", 'redirect points at the original');

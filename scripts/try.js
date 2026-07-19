@@ -11,7 +11,10 @@ const smoke = process.env.CLEANROOM_TRY_SMOKE === '1';
 
 (async () => {
   const extensionPath = path.resolve(__dirname, '..', 'extension');
-  const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cleanroom-try-'));
+  // A fixed profile wiped on each run means every `make try` is a clean slate:
+  // fresh extension load, no leftover storage, no accumulating temp dirs.
+  const userDataDir = path.join(os.tmpdir(), 'cleanroom-try-profile');
+  fs.rmSync(userDataDir, { recursive: true, force: true });
 
   const context = await chromium.launchPersistentContext(userDataDir, {
     // Extensions need a real Chromium; headless only works in smoke mode
@@ -29,8 +32,11 @@ const smoke = process.env.CLEANROOM_TRY_SMOKE === '1';
     worker = await context.waitForEvent('serviceworker');
   }
 
-  // Point the extension at the local server
-  await worker.evaluate((url) => chrome.storage.local.set({ serverUrl: url }), serverUrl);
+  // Start from a clean slate, then point the extension at the local server
+  await worker.evaluate((url) => Promise.all([
+    chrome.storage.local.clear(),
+    chrome.storage.session.clear()
+  ]).then(() => chrome.storage.local.set({ serverUrl: url })), serverUrl);
 
   const page = context.pages()[0] || (await context.newPage());
   await page.goto('https://example.com/');
@@ -54,6 +60,7 @@ const smoke = process.env.CLEANROOM_TRY_SMOKE === '1';
     }
     console.log('Smoke check passed: extension opens sanitized pages via ' + serverUrl);
     await context.close();
+    fs.rmSync(userDataDir, { recursive: true, force: true });
     return;
   }
 
@@ -64,4 +71,5 @@ const smoke = process.env.CLEANROOM_TRY_SMOKE === '1';
   console.log('  - Or browse to ' + serverUrl + ' and paste a URL');
   console.log('Close the browser window to stop.');
   await new Promise((resolve) => context.on('close', resolve));
+  fs.rmSync(userDataDir, { recursive: true, force: true });
 })();

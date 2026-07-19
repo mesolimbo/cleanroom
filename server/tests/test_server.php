@@ -25,16 +25,21 @@ function check(bool $condition, string $label): void
     }
 }
 
-function http_get(string $url, bool $follow = false, string $method = 'GET'): array
+function http_get(string $url, bool $follow = false, string $method = 'GET', ?string $body = null): array
 {
     $ch = curl_init($url);
-    curl_setopt_array($ch, [
+    $options = [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_FOLLOWLOCATION => $follow,
         CURLOPT_HEADER => true,
         CURLOPT_TIMEOUT => 30,
         CURLOPT_CUSTOMREQUEST => $method,
-    ]);
+    ];
+    if ($body !== null) {
+        $options[CURLOPT_POSTFIELDS] = $body;
+        $options[CURLOPT_HTTPHEADER] = ['Content-Type: text/plain;charset=UTF-8'];
+    }
+    curl_setopt_array($ch, $options);
     $raw = curl_exec($ch);
     if ($raw === false) {
         return ['status' => 0, 'headers' => [], 'body' => ''];
@@ -89,8 +94,8 @@ check(str_contains($res['body'], '<form'), 'landing page has a form');
 $res = http_get("{$appUrl}/?url=" . urlencode('ftp://example.com/x'));
 check($res['status'] === 400, 'non-http protocol rejected');
 
-$res = http_get("{$appUrl}/", false, 'POST');
-check($res['status'] === 405, 'non-GET method rejected');
+$res = http_get("{$appUrl}/", false, 'PUT');
+check($res['status'] === 405, 'unsupported method rejected');
 
 $res = http_get("{$appUrl}/?url=" . urlencode("{$originUrl}/page"));
 check($res['status'] === 200, 'fetched page returns 200');
@@ -114,6 +119,28 @@ $res = http_get("{$appUrl}/?url=" . urlencode("{$originUrl}/challenge"));
 check($res['status'] === 502, 'bot challenge page reported as an error');
 check(str_contains($res['body'], 'block automated access'), 'bot challenge error explains the block');
 check(str_contains($res['body'], "href=\"{$originUrl}/challenge\""), 'bot challenge error links to the original');
+
+$dom = '<html><head><title>Posted</title><script>evil()</script></head><body><div class="sidebar">SIDEBAR</div><p>POSTEDCONTENT</p></body></html>';
+$res = http_get("{$appUrl}/?url=" . urlencode('https://news.example/story'), false, 'POST', $dom);
+check($res['status'] === 200, 'POST DOM returns 200');
+check(($res['headers']['access-control-allow-origin'] ?? '') === '*', 'POST response allows cross-origin reads');
+check(str_contains($res['body'], 'POSTEDCONTENT'), 'POST content kept');
+check(!str_contains($res['body'], '<script'), 'POST scripts stripped');
+check(str_contains($res['body'], '<base href="https://news.example/story">'), 'POST base tag uses supplied url');
+
+$res = http_get("{$appUrl}/?url=" . urlencode('https://news.example/story') . '&filters=sidebar', false, 'POST', $dom);
+check(!str_contains($res['body'], 'SIDEBAR'), 'POST filters applied from query string');
+check(str_contains($res['body'], 'POSTEDCONTENT'), 'POST filtered page keeps other content');
+
+$res = http_get("{$appUrl}/?url=" . urlencode('ftp://news.example/story'), false, 'POST', $dom);
+check($res['status'] === 400, 'POST rejects non-http url');
+
+$res = http_get("{$appUrl}/?url=" . urlencode('https://news.example/story'), false, 'POST', '');
+check($res['status'] === 400, 'POST rejects empty body');
+
+$res = http_get("{$appUrl}/", false, 'OPTIONS');
+check($res['status'] === 204, 'CORS preflight answered with 204');
+check(($res['headers']['access-control-allow-origin'] ?? '') === '*', 'preflight allows any origin');
 
 $res = http_get("{$appUrl}/?url=" . urlencode("{$originUrl}/image"));
 check($res['status'] === 302, 'non-HTML content redirects');

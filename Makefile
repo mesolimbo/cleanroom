@@ -24,7 +24,7 @@ build: build-extension build-server ## Build everything into dist/
 build-extension: ## Package the extension for the Chrome Web Store (dist/cleanroom-extension.zip)
 	mkdir -p $(DIST)
 	rm -f $(DIST)/cleanroom-extension.zip
-	cd $(EXT_DIR) && zip -r -q ../$(DIST)/cleanroom-extension.zip manifest.json background.js options.html options.js icons
+	cd $(EXT_DIR) && zip -r -q ../$(DIST)/cleanroom-extension.zip manifest.json background.js viewer.html viewer.js options.html options.js icons
 	@ls -lh $(DIST)/cleanroom-extension.zip
 
 build-server: ## Assemble the deployable server (dist/server/, upload its contents to Dreamhost)

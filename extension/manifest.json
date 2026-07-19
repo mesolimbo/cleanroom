@@ -1,11 +1,12 @@
 {
   "manifest_version": 3,
   "name": "Cleanroom",
-  "version": "2.0",
+  "version": "2.1",
   "description": "Open the current page or any link through the Cleanroom service for a clean, script-free reading view.",
   "homepage_url": "https://cleanroom.whileyou.work",
   "permissions": [
     "activeTab",
+    "scripting",
     "storage",
     "contextMenus"
   ],

@@ -292,9 +292,21 @@ function cleanroom_fetch(string $url, int $timeout = CLEANROOM_FETCH_TIMEOUT): a
         CURLOPT_TIMEOUT => $timeout,
         CURLOPT_USERAGENT => CLEANROOM_USER_AGENT,
         CURLOPT_ENCODING => '',
+        // A WAF that sees "Chrome" over HTTP/1.1 with no client hints or
+        // Sec-Fetch metadata challenges instantly; match a real top-level
+        // navigation instead. Client hints must agree with the UA version.
+        CURLOPT_HTTP_VERSION => defined('CURL_HTTP_VERSION_2TLS') ? CURL_HTTP_VERSION_2TLS : CURL_HTTP_VERSION_1_1,
         CURLOPT_HTTPHEADER => [
-            'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
             'Accept-Language: en-US,en;q=0.9',
+            'Upgrade-Insecure-Requests: 1',
+            'sec-ch-ua: "Chromium";v="149", "Google Chrome";v="149", "Not.A/Brand";v="24"',
+            'sec-ch-ua-mobile: ?0',
+            'sec-ch-ua-platform: "Windows"',
+            'Sec-Fetch-Site: none',
+            'Sec-Fetch-Mode: navigate',
+            'Sec-Fetch-User: ?1',
+            'Sec-Fetch-Dest: document',
         ],
         CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
         CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
@@ -625,12 +637,50 @@ HTML;
     cleanroom_send_html($status, cleanroom_page('Cleanroom', $content));
 }
 
+// The extension POSTs the DOM its own browser already rendered (at the user's
+// IP, past any bot wall) and we only sanitize it: no server-side fetch,
+// challenge check, or stylesheet inlining. url and filters ride the query
+// string; the raw HTML is the request body.
+function cleanroom_handle_post(): void
+{
+    header('Access-Control-Allow-Origin: *');
+    $rawUrl = cleanroom_normalize_target(trim($_GET['url'] ?? ''));
+    $scheme = strtolower(parse_url($rawUrl, PHP_URL_SCHEME) ?: '');
+    if ($scheme !== 'http' && $scheme !== 'https') {
+        cleanroom_send_error(400, 'A valid http or https url parameter is required');
+        return;
+    }
+    $html = file_get_contents('php://input');
+    if ($html === false || $html === '') {
+        cleanroom_send_error(400, 'Request body is empty');
+        return;
+    }
+    if (strlen($html) > CLEANROOM_MAX_HTML_BYTES) {
+        cleanroom_send_error(413, 'Page is too large to sanitize');
+        return;
+    }
+    $filterPatterns = cleanroom_parse_filters($_GET['filters'] ?? null);
+    cleanroom_send_html(200, cleanroom_sanitize($html, $filterPatterns, $rawUrl));
+}
+
 function cleanroom_handle(): void
 {
     $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+    if ($method === 'OPTIONS') {
+        http_response_code(204);
+        header('Access-Control-Allow-Origin: *');
+        header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+        header('Access-Control-Allow-Headers: Content-Type');
+        header('Access-Control-Max-Age: 86400');
+        return;
+    }
+    if ($method === 'POST') {
+        cleanroom_handle_post();
+        return;
+    }
     if ($method !== 'GET' && $method !== 'HEAD') {
         http_response_code(405);
-        header('Allow: GET, HEAD');
+        header('Allow: GET, HEAD, POST, OPTIONS');
         return;
     }
 

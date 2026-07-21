@@ -1,6 +1,6 @@
 # Cleanroom
 
-<img src="icons/icon128.png" width="128" height="128" alt="Cleanroom Icon">
+<img src="extension/icons/icon128.png" width="128" height="128" alt="Cleanroom Icon">
 
 Cleanroom serves sanitized, script-free versions of webpages at `https://cleanroom.whileyou.work`. A single-file PHP app fetches the requested page, strips scripts and trackers, and returns the clean HTML. The Chrome extension is a thin shortcut that opens the current page (or a right-clicked link) through the service.
 

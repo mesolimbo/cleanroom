@@ -182,10 +182,12 @@ function cleanroom_privacy_page(): string
     <div class="prose">
       <img class="logo" src="/logo.svg" alt="" width="64" height="64" style="margin: 0 0 1rem">
       <h1>Cleanroom Privacy Policy</h1>
-      <p>Cleanroom (this website and the Cleanroom browser extension) fetches a webpage you explicitly request, removes scripts and trackers from it, and shows you the result.</p>
+      <p>Cleanroom (this website and the Cleanroom browser extension) sanitizes a webpage you explicitly request, removing scripts and trackers, and shows you the result. What reaches this server depends on how you ask for a page.</p>
       <h2>What is collected</h2>
       <ul>
-        <li>The URL you ask Cleanroom to sanitize is sent to this server so it can fetch the page. The extension only does this when you click the Cleanroom icon or choose "Open in Cleanroom"; it never sends anything while you browse.</li>
+        <li>When you submit a URL (on this website, or by choosing "Open in Cleanroom" on a link), that URL is sent to the server so it can fetch and sanitize the page.</li>
+        <li>When you click the Cleanroom icon on a page you are viewing, the extension sends that page's already-loaded HTML to the server to sanitize. This lets the reading view match what your browser actually loaded, and it happens only on that click, never while you browse.</li>
+        <li>In both cases the page is sanitized as the request is served and returned to you; its content is not stored or retained afterward.</li>
         <li>Standard web server logs (IP address, requested URL, timestamp) are kept briefly by the hosting provider for operational purposes.</li>
       </ul>
       <h2>What is not collected</h2>

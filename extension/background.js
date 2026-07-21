@@ -45,27 +45,35 @@ async function sanitizeCurrentTab(tab) {
   const { filterPatterns, serverUrl } = await getSettings();
   try {
     const html = await captureDom(tab.id);
-    const endpoint = cleanroomUrl(serverUrl, tab.url, filterPatterns);
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      // A CORS-safelisted content type keeps this a simple request (no preflight)
-      headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
-      body: html
-    });
-    if (!response.ok) {
-      throw new Error(`Cleanroom server returned ${response.status}`);
-    }
-    const sanitized = await response.text();
-    const key = 'cleanroom-' + crypto.randomUUID();
-    await chrome.storage.session.set({ [key]: sanitized });
-    await chrome.tabs.create({ url: chrome.runtime.getURL('viewer.html') + '?k=' + key });
-    chrome.tabs.remove(tab.id);
+    await sanitizeAndOpen(tab, html, filterPatterns, serverUrl);
   } catch (error) {
     // Restricted pages (chrome://, the web store) block injection, and the
     // POST can fail; fall back to letting the server fetch the URL instead.
     console.warn('Cleanroom: DOM capture failed, falling back to server fetch', error);
     await openViaServer(tab.url, filterPatterns, serverUrl, tab.id);
   }
+}
+
+// POST the captured DOM to the service, then open the sanitized result in the
+// viewer. The POST runs in the worker, not the page, so the origin site's CSP
+// can't block it, and a service worker can't create the blob/document to show
+// the result itself, so the sanitized HTML is handed to viewer.html.
+async function sanitizeAndOpen(tab, html, filterPatterns, serverUrl) {
+  const endpoint = cleanroomUrl(serverUrl, tab.url, filterPatterns);
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    // A CORS-safelisted content type keeps this a simple request (no preflight)
+    headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+    body: html
+  });
+  if (!response.ok) {
+    throw new Error(`Cleanroom server returned ${response.status}`);
+  }
+  const sanitized = await response.text();
+  const key = 'cleanroom-' + crypto.randomUUID();
+  await chrome.storage.session.set({ [key]: sanitized });
+  await chrome.tabs.create({ url: chrome.runtime.getURL('viewer.html') + '?k=' + key });
+  chrome.tabs.remove(tab.id);
 }
 
 // Create context menu item

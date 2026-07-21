@@ -196,7 +196,7 @@ function cleanroom_privacy_page(): string
         <li>Your filter patterns and settings are stored locally in your browser, never on the server.</li>
         <li>Nothing is sold or shared with third parties.</li>
       </ul>
-      <p>Questions: [redacted]</p>
+      <p>Questions or concerns? Please <a href="https://github.com/mesolimbo/cleanroom/issues">open an issue on GitHub</a>.</p>
       <p class="hint" style="text-align: left"><a href="/">&larr; Back to Cleanroom</a></p>
     </div>
 HTML, '40rem');
